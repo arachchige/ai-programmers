@@ -3,7 +3,7 @@ import glob
 import openai
 from pinecone import Pinecone
 from typing import List
-from langsmith import Client, traceable
+from langsmith import Client, traceable, tracing_context
 
 # Initialize OpenAI and Pinecone clients
 openai.api_key = os.environ.get("OPENAI_API_KEY")
@@ -19,7 +19,7 @@ INDEX_NAME = "test"
 EMBEDDING_MODEL = "text-embedding-3-small"
 CHAT_MODEL = "gpt-4o-mini-2024-07-18"
 
-@traceable(name="load_documents")
+@traceable(name="load_documents", project_name=langsmith_project)
 def load_documents():
     """Load all text documents from the letters directory."""
     documents = []
@@ -35,7 +35,7 @@ def load_documents():
     print(f"Found {len(documents)} letters")
     return documents
 
-@traceable(name="chunk_documents")
+@traceable(name="chunk_documents", project_name=langsmith_project)
 def chunk_documents(documents, chunk_size=1000, chunk_overlap=200):
     """Split documents into smaller chunks for better processing."""
     chunks = []
@@ -57,7 +57,7 @@ def chunk_documents(documents, chunk_size=1000, chunk_overlap=200):
     
     return chunks
 
-@traceable(name="get_embeddings")
+@traceable(name="get_embeddings", project_name=langsmith_project)
 def get_embeddings(texts: List[str]):
     """Generate embeddings for a list of texts using OpenAI."""
     response = openai.embeddings.create(
@@ -66,7 +66,7 @@ def get_embeddings(texts: List[str]):
     )
     return [embedding.embedding for embedding in response.data]
 
-@traceable(name="embed_documents")
+@traceable(name="embed_documents", project_name=langsmith_project)
 def embed_documents(chunks, namespace):
     """Embed documents and store them in Pinecone."""
     # Get Pinecone index
@@ -95,6 +95,7 @@ def embed_documents(chunks, namespace):
         # Upsert to Pinecone
         index.upsert(vectors=vectors, namespace=namespace)
 
+@traceable(name="search_documents", project_name=langsmith_project)
 def search_documents(query, namespace, top_k=5):
     """Search the vector store with the user query."""
     # Get query embedding
@@ -120,8 +121,7 @@ def search_documents(query, namespace, top_k=5):
     
     return docs_with_scores
 
-# TODO: Add traceable decorator to track this function in LangSmith
-# Example: https://docs.smith.langchain.com/observability/how_to_guides/log_traces_to_project
+@traceable(name="ask_openai", project_name=langsmith_project, run_type="llm")
 def ask_openai(query, documents):
     """Ask OpenAI a question with context from the documents."""
     # Join all documents into a single context string
@@ -147,10 +147,11 @@ if __name__ == "__main__":
     # Step 2: Write a query
     user_query = "When did Berkshire Hathaway purchase it's first coke stock?" # Year: 1988
 
-    # Step 3: Check Pinecone for similar chunks
-    docs_and_scores = search_documents(query=user_query, namespace="chunks")
-    
-    # Step 4: Put docs into prompt and send to OpenAI
-    response = ask_openai(user_query, docs_and_scores)
-        
-    print(response) 
+    with tracing_context(enabled=True, project_name=langsmith_project):
+        # Step 3: Check Pinecone for similar chunks
+        docs_and_scores = search_documents(query=user_query, namespace="chunks")
+
+        # Step 4: Put docs into prompt and send to OpenAI
+        response = ask_openai(user_query, docs_and_scores)
+
+    print(response)

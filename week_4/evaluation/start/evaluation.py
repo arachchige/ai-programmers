@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from openai import OpenAI
 from langsmith.evaluation import evaluate
 
@@ -42,7 +43,11 @@ def make_call_to_llm(input):
 def perform_eval(llm_result, dataset_item):
     try:
         # Parse the model's output
-        llm_output = json.loads(llm_result.outputs['output'])
+        model_output = llm_result.outputs['output'].strip()
+        fenced_json = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", model_output, re.DOTALL | re.IGNORECASE)
+        if fenced_json:
+            model_output = fenced_json.group(1)
+        llm_output = json.loads(model_output)
         
         # Parse the expected output
         expected_output = json.loads(dataset_item.outputs['output'])
@@ -58,8 +63,12 @@ def perform_eval(llm_result, dataset_item):
         # Handle the case where JSON parsing fails
         return {"score": 0.0}
 
-# Evaluate the target task
-# TODO: Implement the evaluate function to run the evaluation
-# See https://docs.smith.langchain.com/evaluation for reference and examples
-# This should evaluate make_call_to_llm against the dataset_name using perform_eval
-# and create an experiment with the prefix "news_extraction_homework"
+if __name__ == "__main__":
+    results = evaluate(
+        make_call_to_llm,
+        data=dataset_name,
+        evaluators=[perform_eval],
+        experiment_prefix="news_extraction_homework",
+    )
+
+    print(f"Evaluation results: {results}")

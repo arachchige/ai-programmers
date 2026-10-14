@@ -1,15 +1,15 @@
 import os
 import glob
-import openai
+from openai import OpenAI
 from pinecone import Pinecone
 from typing import List
 
 # Initialize OpenAI and Pinecone clients
-openai.api_key = os.environ.get("OPENAI_API_KEY")
+client = OpenAI()
 pc = Pinecone(api_key=os.environ.get("PINECONE_API_KEY"))
 
 # Constants
-INDEX_NAME = "YOUR INDEX HERE"
+INDEX_NAME = os.environ.get("PINECONE_INDEX_NAME", "test")
 EMBEDDING_MODEL = "text-embedding-3-small"
 CHAT_MODEL = "gpt-4o-mini-2024-07-18"
 
@@ -51,7 +51,7 @@ def chunk_documents(documents, chunk_size=1000, chunk_overlap=200):
 
 def get_embeddings(texts: List[str]):
     """Generate embeddings for a list of texts using OpenAI."""
-    response = openai.embeddings.create(
+    response = client.embeddings.create(
         input=texts,
         model=EMBEDDING_MODEL
     )
@@ -90,16 +90,23 @@ def search_documents(query, namespace, top_k=5):
     # Get query embedding
     query_embedding = get_embeddings([query])[0]
     
-    # TODO: Search Pinecone using the query_embedding
-    # Implement the search functionality using the Pinecone Index query method
-    # Documentation: https://sdk.pinecone.io/python/pinecone/grpc.html#GRPCIndex.query
-    # The query should:
-    # 1. Get a reference to the index
-    # 2. Call the query method with the appropriate parameters
-    # 3. Process the results to extract the documents
-    
-    # Placeholder for the actual implementation
+    index = pc.Index(INDEX_NAME)
+    results = index.query(
+        vector=query_embedding,
+        top_k=top_k,
+        namespace=namespace,
+        include_metadata=True,
+        include_values=False
+    )
+
     docs_with_scores = []
+    matches = results.matches if hasattr(results, "matches") else results["matches"]
+    for match in matches:
+        metadata = match.metadata if hasattr(match, "metadata") else match["metadata"]
+        score = match.score if hasattr(match, "score") else match["score"]
+        with open(metadata["source"], "r") as file:
+            docs_with_scores.append((file.read(), score))
+
     return docs_with_scores
 
 def ask_openai(query, documents):
@@ -117,7 +124,7 @@ def ask_openai(query, documents):
     ]
     
     # Call OpenAI API
-    response = openai.chat.completions.create(
+    response = client.chat.completions.create(
         model=CHAT_MODEL,
         messages=messages
     )

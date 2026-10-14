@@ -1,37 +1,40 @@
-from openai import OpenAI
+import os
 
-# Initialize OpenAI client
-client = OpenAI()
+from google import genai
+
+# Initialize Gemini client
+client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
 def analyze_sentiment(review):
     """
     Analyze the sentiment of a movie review using structured output.
     Returns a dictionary with 'thought' and 'sentiment' keys.
     """
-    # TODO: Create a prompt that:
-    # 1. Asks for sentiment analysis
-    # 2. Specifies the required output format
-    #       thought: [analysis]
-    #       sentiment: [positive/negative]
-    # 3. Includes the review text
-    prompt = """
-    # TODO: Add your prompt here
+    prompt = f"""
+    Analyze the following movie review and determine whether it is positive or negative.
+
+    Review: {review}
+
+    Return your answer using exactly this format:
+    thought: [brief explanation of the review's sentiment]
+    sentiment: [positive or negative]
     """
 
-    response = client.chat.completions.create(
-        model="gpt-4o-mini-2024-07-18",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.7
+    response = client.models.generate_content(
+        model="gemini-3.8-flash",
+        contents=prompt
     )
 
-    content = response.choices[0].message.content
-    # TODO: Parse the response to extract thought and sentiment
-    # The response should be in the format:
-    # thought: [analysis]
-    # sentiment: [positive/negative]
+    content = response.text
+    lines = content.strip().splitlines()
+    thought = next(line.split(":", 1)[1].strip()
+                   for line in lines if line.lower().startswith("thought:"))
+    sentiment = next(line.split(":", 1)[1].strip().lower()
+                     for line in lines if line.lower().startswith("sentiment:"))
+
     result = {
-        "thought": "",  # TODO: Extract thought
-        "sentiment": ""  # TODO: Extract sentiment
+        "thought": thought,
+        "sentiment": sentiment
     }
     
     return result
